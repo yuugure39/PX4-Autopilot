@@ -814,6 +814,9 @@ void Sih::send_dist_snsr(const hrt_abstime &time_now_us)
 		if (current_distance > _distance_snsr_max) {
 			// this is based on lightware lw20 behaviour
 			current_distance = UINT16_MAX / 100.f;
+
+		} else if (current_distance < _distance_snsr_min) {
+			current_distance = _distance_snsr_min;
 		}
 	}
 
