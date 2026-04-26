@@ -84,6 +84,10 @@
 #include <uORB/topics/vehicle_global_position.h>
 #include <uORB/topics/vehicle_local_position.h>
 #include <uORB/topics/ranging_beacon.h>
+#if 0 // sensor watchdog includes
+#include <uORB/topics/sensor_baro.h>
+#include <uORB/topics/sensor_mag.h>
+#endif
 
 #if defined(ENABLE_LOCKSTEP_SCHEDULER)
 #include <sys/time.h>
@@ -146,6 +150,20 @@ private:
 	uORB::SubscriptionInterval _parameter_update_sub{ORB_ID(parameter_update), 1_s};
 	uORB::Subscription _actuator_out_sub{ORB_ID(actuator_outputs_sim)};
 	failure_injection::Config _failure_config;
+
+#if 0 // sensor watchdog: kept available for future debugging of stalled sensor sims
+	// Watchdog: track the last publish time of sensor_baro and sensor_mag so the
+	// SIH loop (which is always running) can catch the case where the sim
+	// modules silently stop publishing (we've seen this happen around arming).
+	uORB::Subscription _watchdog_baro_sub{ORB_ID(sensor_baro)};
+	uORB::Subscription _watchdog_mag_sub{ORB_ID(sensor_mag)};
+	hrt_abstime        _watchdog_last_baro_pub_us{0};
+	hrt_abstime        _watchdog_last_mag_pub_us{0};
+	hrt_abstime        _watchdog_last_warn_baro_us{0};
+	hrt_abstime        _watchdog_last_warn_mag_us{0};
+	bool               _watchdog_baro_disabled{false}; ///< true when a baro failure is deliberately injected
+	bool               _watchdog_mag_disabled{false};  ///< true when a mag failure is deliberately injected
+#endif
 
 	bool _airspeed_blocked{false};
 	bool _distance_sensor_blocked{false};
