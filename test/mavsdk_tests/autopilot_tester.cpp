@@ -440,7 +440,7 @@ void AutopilotTester::check_mission_item_speed_above(int item_index, float min_s
 
 	_telemetry->set_rate_velocity_ned(1);
 	_telemetry->subscribe_velocity_ned([item_index, min_speed_m_s, guard = _callback_guard,
-	    this](Telemetry::VelocityNed velocity) {
+		    this](Telemetry::VelocityNed velocity) {
 		const std::lock_guard<std::mutex> lock(guard->mutex);
 
 		if (!guard->alive) {
