@@ -34,6 +34,10 @@
 #ifndef OPEN_DRONE_ID_BASIC_ID_HPP
 #define OPEN_DRONE_ID_BASIC_ID_HPP
 
+#include <stdio.h>
+#include <string.h>
+
+#include <px4_platform_common/board_common.h>
 #include <uORB/topics/vehicle_status.h>
 #include <modules/mavlink/open_drone_id_translations.hpp>
 
@@ -78,9 +82,30 @@ private:
 			// ua_type: MAV_ODID_UA_TYPE
 			msg.ua_type = open_drone_id_translations::odidTypeForMavType(vehicle_status.system_type);
 
-			// uas_id: UAS (Unmanned Aircraft System) ID following the format specified by id_type
-			// TODO: MAV_ODID_ID_TYPE_SERIAL_NUMBER needs to be ANSI/CTA-2063 format
-			board_get_px4_guid_formated((char *)(msg.uas_id), sizeof(msg.uas_id));
+			// uas_id: UAS (Unmanned Aircraft System) ID per GB 46860-2025:
+			//         4-digit manufacturer code + 4-digit product model code + 12-digit serial number = 20 digits,
+			//         e.g. "TFHKTEST000000000001". The 20 chars fill the 20-byte field completely (no trailing null).
+			//         Manufacturer/model identify the product; the serial is derived from the board UID
+			//         (FNV-1a hash over the GUID, reduced mod 1e12) so each unit gets a unique ID.
+			static constexpr char kGbidManufacturerCode[] = "TFHK"; // TODO: change to your GB 46860-2025 manufacturer code
+			static constexpr char kGbidModelCode[] = "TEST"; // TODO: change to your product model code
+
+			px4_guid_t px4_guid;
+			board_get_px4_guid(px4_guid);
+
+			uint64_t serial_hash = 1469598103934665603ULL;
+
+			for (unsigned i = 0; i < PX4_GUID_BYTE_LENGTH; i++) {
+				serial_hash ^= px4_guid[i];
+				serial_hash *= 1099511628211ULL;
+			}
+
+			char gb_uaid[4 + 4 + 12 + 1];
+			snprintf(gb_uaid, sizeof(gb_uaid), "%s%s%012llu",
+				 kGbidManufacturerCode, kGbidModelCode,
+				 (unsigned long long)(serial_hash % 1000000000000ULL));
+
+			memcpy(msg.uas_id, gb_uaid, sizeof(msg.uas_id));
 
 			mavlink_msg_open_drone_id_basic_id_send_struct(_mavlink->get_channel(), &msg);
 
