@@ -90,15 +90,29 @@ private:
 			static constexpr char kGbidManufacturerCode[] = "TFHK"; // TODO: change to your GB 46860-2025 manufacturer code
 			static constexpr char kGbidModelCode[] = "TEST"; // TODO: change to your product model code
 
+			uint64_t serial_hash = 1469598103934665603ULL;
+
+#ifndef BOARD_HAS_NO_UUID
 			px4_guid_t px4_guid;
 			board_get_px4_guid(px4_guid);
-
-			uint64_t serial_hash = 1469598103934665603ULL;
 
 			for (unsigned i = 0; i < PX4_GUID_BYTE_LENGTH; i++) {
 				serial_hash ^= px4_guid[i];
 				serial_hash *= 1099511628211ULL;
 			}
+
+#else
+			/* Targets without a hardware GUID (e.g. SITL) have no px4_guid_t; derive the serial
+			 * from the 32-bit UUIDs the platform does provide. */
+			uuid_uint32_t uuid;
+			board_get_uuid32(uuid);
+
+			for (unsigned i = 0; i < sizeof(uuid); i++) {
+				serial_hash ^= reinterpret_cast<const uint8_t *>(uuid)[i];
+				serial_hash *= 1099511628211ULL;
+			}
+
+#endif
 
 			char gb_uaid[4 + 4 + 12 + 1];
 			snprintf(gb_uaid, sizeof(gb_uaid), "%s%s%012llu",
