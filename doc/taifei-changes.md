@@ -12,8 +12,7 @@
 | # | Commit | 类型 | 涉及文件 | 作用 |
 |---|---|---|---|---|
 | 1 | `eec0da0d05` | feat | `src/modules/mavlink/streams/OPEN_DRONE_ID_BASIC_ID.hpp` | `uas_id` 改为按 GB 46860-2025 输出 20 位 ID |
-| 2 | `5a5df653d7` | fix | `src/modules/mavlink/mavlink_main.cpp`<br>`src/modules/mavlink/mavlink_mission.cpp` | `MAVLINK_MODE_CUSTOM` 真正停止发送 |
-| 3 | `4746115da3` | fix | `src/modules/mavlink/streams/OPEN_DRONE_ID_BASIC_ID.hpp` | 修复 SITL/POSIX 链接失败 |
+| 2 | `4746115da3` | fix | `src/modules/mavlink/streams/OPEN_DRONE_ID_BASIC_ID.hpp` | 修复 SITL/POSIX 链接失败 |
 
 ---
 
@@ -39,7 +38,7 @@
 | 85-89 | 格式说明注释 |
 | 90-91 | 制造商码 / 产品型号码常量 `kGbidManufacturerCode`、`kGbidModelCode`（当前为占位值 `TFHK` / `TEST`） |
 | 93 | 序列号哈希初值（FNV-1a offset basis） |
-| 95-115 | 序列号派生：板载 GUID 的 FNV-1a 哈希（含 SITL 回退分支，见改动三） |
+| 95-115 | 序列号派生：板载 GUID 的 FNV-1a 哈希（含 SITL 回退分支，见改动二） |
 | 117-120 | `snprintf` 拼装 20 位字符串 |
 | 122 | 拷入 `msg.uas_id` |
 
@@ -68,75 +67,7 @@
 
 ---
 
-## 改动二：`MAVLINK_MODE_CUSTOM` 真正停止发送
-
-**Commit**：`5a5df653d7`
-
-### 改动原因
-
-使用场景是飞控通过串口连接一块智能电池，而**电池端不需要飞控的任何数据（包括心跳）**，
-因此将对应 MAVLink 实例设为 `MAVLINK_MODE_CUSTOM`，期望该链路完全不发送。
-
-但 Custom 模式实际并未静默，原因有三层：
-
-1. **模式外的默认流**：`configure_streams_to_default()` 中 Custom 分支确实不配置任何流
-   （`case MAVLINK_MODE_CUSTOM: //stream nothing`），但在它**之前**有一段代码对
-   **除 IRIDIUM 外的所有模式**都无条件挂载三个流：
-   `HEARTBEAT`（1 Hz）、`STATUSTEXT`（20 Hz）、`COMMAND_LONG`（不限速）。
-   其中 `HEARTBEAT` 还被显式排除在限速之外（源码注释：*constant rate stream, rate never adjusted*），
-   因此即使把 `MAV_x_RATE` 调得很低也无法压掉它。
-2. **绕过 stream 表的发送路径**：主循环发送段内的 `_events.update()`、跨实例转发、命令重试等
-   都不查 stream 配置。实测在流全部清空后，链路上仍有约 17.9 B/s 的残留流量；
-   该残留位于主循环发送段内，未逐条定位到具体消息，最终由本条改动的总闸一并覆盖。
-3. **接收线程内的发送**：`MavlinkMissionManager::send()` 由**接收线程**周期调用，
-   主循环的发送闸门管不到它，导致任务进度变化时会漏出 `MISSION_CURRENT`（msgid 42）。
-
-### 改动文件与行号
-
-**文件 A：`src/modules/mavlink/mavlink_main.cpp`**
-
-| 行号 | 内容 |
-|---|---|
-| 2282-2290 | 新增：Custom 模式下将 `_transmitting_enabled` 置为 `false` |
-| 2292-2308 | 修改：默认流的挂载条件由「非 IRIDIUM」改为「非 IRIDIUM 且非 CUSTOM」 |
-
-**文件 B：`src/modules/mavlink/mavlink_mission.cpp`**
-
-| 行号 | 内容 |
-|---|---|
-| 497-502 | 修改：`MavlinkMissionManager::send()` 开头的守卫增加 `!should_transmit()` 条件 |
-
-### 改动作用
-
-`should_transmit()`（`mavlink_main.h`）是主循环的总闸：`_transmitting_enabled` 为 `false` 时，
-`mavlink_main.cpp` 主循环开头的 `if (!should_transmit()) { ...; continue; }` 会直接跳过整段发送逻辑。
-把 Custom 模式与这个闸门绑定后，`_transmitting_enabled == false` 成为一个**全局不变量**：
-
-- 主循环不再发送任何内容，因此 stream、events、转发、命令重试一并停止；
-- 接收线程中 mission 相关的发送也被同一条件挡住；
-- **接收完全不受影响**，电池的 `BATTERY_STATUS` 仍正常进入飞控。
-
-该模式不会被意外重新打开：唯一能恢复 `_transmitting_enabled` 的路径是
-`VEHICLE_CMD_CONTROL_HIGH_LATENCY` 命令处理，而该分支被 `_mode == MAVLINK_MODE_IRIDIUM` 限定。
-
-行为对照（`mavlink status`）：
-
-| 项目 | 改动前 | 改动后 |
-|---|---|---|
-| `tx` | 59.7 B/s | 0.0 B/s |
-| `tx rate mult` | 0.050（被钳在下限） | 1.000 |
-| `TX enabled` | YES | NO |
-| 电池端收到的消息 | 心跳等持续流量，另有 msgid 42 | 无 |
-
-### 已知遗留
-
-串口链路启动、进入主循环**之前**会盲发一次 `AUTOPILOT_VERSION`
-（`mavlink_main.cpp` 中 `if (get_protocol() == Protocol::SERIAL) { send_autopilot_capabilities(); }`）。
-该发送不经过 `should_transmit()`，因此每次上电会有一次性突发。当前评估为可接受，未做处理。
-
----
-
-## 改动三：修复 SITL/POSIX 链接失败
+## 改动二：修复 SITL/POSIX 链接失败
 
 **Commit**：`4746115da3`
 

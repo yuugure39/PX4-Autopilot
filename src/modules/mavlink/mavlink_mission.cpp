@@ -494,10 +494,8 @@ MavlinkMissionManager::send_mission_item_reached(uint16_t seq)
 void
 MavlinkMissionManager::send()
 {
-	// do not send anything over high latency communication,
-	// nor on a link with transmitting disabled (e.g. MAVLINK_MODE_CUSTOM to a smart battery).
-	// This runs in the receiver task, which bypasses the transmit gate in the mavlink main loop.
-	if (_mavlink.get_mode() == Mavlink::MAVLINK_MODE_IRIDIUM || !_mavlink.should_transmit()) {
+	// do not send anything over high latency communication
+	if (_mavlink.get_mode() == Mavlink::MAVLINK_MODE_IRIDIUM) {
 		return;
 	}
 

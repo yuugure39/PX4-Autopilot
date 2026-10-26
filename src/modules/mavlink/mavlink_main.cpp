@@ -2279,22 +2279,8 @@ Mavlink::task_main(int argc, char *argv[])
 		_transmitting_enabled_commanded = false;
 	}
 
-	/* MAVLINK_MODE_CUSTOM is used for links whose peer needs nothing from us (e.g. a smart battery).
-	 * Disable transmitting entirely: should_transmit() gates the whole main loop, so this also covers
-	 * the message paths that bypass the stream configuration above (events, forwarding, command
-	 * retries). Receiving is unaffected. Nothing re-enables it for this mode.
-	 */
-	if (_mode == MAVLINK_MODE_CUSTOM) {
-		_transmitting_enabled = false;
-		_transmitting_enabled_commanded = false;
-	}
-
-	/* add default streams depending on mode.
-	 * MAVLINK_MODE_CUSTOM is excluded as well: it is meant to stream nothing, and a smart battery
-	 * connected on such a link needs no data from the flight controller at all - so also skip the
-	 * otherwise unconditional HEARTBEAT/STATUSTEXT/COMMAND_LONG streams. Receiving is unaffected.
-	 */
-	if (_mode != MAVLINK_MODE_IRIDIUM && _mode != MAVLINK_MODE_CUSTOM) {
+	/* add default streams depending on mode */
+	if (_mode != MAVLINK_MODE_IRIDIUM) {
 
 		/* HEARTBEAT is constant rate stream, rate never adjusted */
 		configure_stream("HEARTBEAT", 1.0f);
