@@ -161,9 +161,10 @@ void OutputMavlinkV2::update(const ControlData &control_data, bool new_setpoints
 			//got new command
 			_set_angle_setpoints(control_data);
 
-			_handle_position_update(control_data);
 			_last_update = now;
 		}
+
+		_handle_position_update(control_data);
 
 		gimbal_device_id = _gimbal_device_found ? _gimbal_device_id : 0;
 

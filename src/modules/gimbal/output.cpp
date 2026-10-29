@@ -184,7 +184,9 @@ void OutputBase::_handle_position_update(const ControlData &control_data, bool f
 		      _calculate_pitch(lon, lat, alt, vehicle_global_position);
 
 	float yaw = get_bearing_to_next_waypoint(vlat, vlon, lat, lon);
-	// We set the yaw angle in the absolute frame in this case.
+	// ROI angles are computed in the absolute frame on all axes.
+	_absolute_angle[0] = true;
+	_absolute_angle[1] = true;
 	_absolute_angle[2] = true;
 
 	// add offsets from VEHICLE_CMD_DO_SET_ROI_WPNEXT_OFFSET
